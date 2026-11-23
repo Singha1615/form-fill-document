@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>lines</title></head><body>
+<pre id="out"></pre>
+<script type="module">
+// Dev tool: lists horizontal underline segments on a page (top-left coords, points)
+// and whether a contract placement already uses them.
+// ?nat=kh&p=1&xmin=300
+import { DOCS } from "../js/docs.js";
+const q = new URLSearchParams(location.search);
+const nat = q.get("nat") || "kh", pn = +(q.get("p") || 1), xmin = +(q.get("xmin") || 0);
+const doc = DOCS.contract;
+const d = { nat };
+const file = doc.file(d);
+const base = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/";
+const pdfjs = await import(base + "pdf.min.mjs");
+pdfjs.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.mjs";
+const pdf = await pdfjs.getDocument("../" + encodeURI(file)).promise;
+const S = 4;
+const page = await pdf.getPage(pn);
+const vp = page.getViewport({ scale: S });
+const c = document.createElement("canvas");
+c.width = vp.width; c.height = vp.height;
+const ctx = c.getContext("2d", { willReadFrequently: true });
+await page.render({ canvasContext: ctx, viewport: vp }).promise;
+const px = ctx.getImageData(0, 0, c.width, c.height).data;
+const dark = (x, y) => { const i = (y * c.width + x) * 4; return (px[i] + px[i + 1] + px[i + 2]) / 3 < 140; };
+const segs = [];
+for (let y = 0; y < c.height; y++) {
+  let start = -1, gap = 0;
+  for (let x = Math.round(xmin * S); x <= c.width; x++) {
+    const dk = x < c.width && dark(x, y);
+    if (dk) { if (start < 0) start = x; gap = 0; }
+    else if (start >= 0) {
+      if (++gap > 6) {
+        const end = x - gap;
+        if (end - start >= Math.min(15, +(q.get("min") || 25)) * S) segs.push({ y: y / S, x1: start / S, x2: end / S });
+        start = -1; gap = 0;
+      }
+    }
+  }
+}
+// merge segments on adjacent rows (line thickness)
+segs.sort((a, b) => a.x1 - b.x1 || a.y - b.y);
+const merged = [];
+for (const s of segs) {
+  const m = merged.find((m) => Math.abs(m.y2 - s.y) <= 1 && Math.abs(m.x1 - s.x1) < 6 && Math.abs(m.x2 - s.x2) < 6);
+  if (m) { m.y2 = s.y; } else merged.push({ ...s, y2: s.y });
+}
+const items = doc.placements(d).filter((it) => it.p === pn && it.t === "text");
+const rowDark = (x1, x2, y) => {
+  let n = 0, k = 0;
+  for (let x = Math.round(x1 * S); x < Math.round(x2 * S); x++, k++) if (dark(x, Math.round(y * S))) n++;
+  return k ? n / k : 0;
+};
+// keep thin, isolated lines only (blank just above and below)
+const clean = [];
+for (const m of merged) {
+  if (m.x2 - m.x1 < (+(q.get("min") || 25)) || m.x2 - m.x1 > 400 || m.y2 - m.y > 2) continue;
+  const above = Math.max(rowDark(m.x1, m.x2, m.y - 1.5), rowDark(m.x1, m.x2, m.y - 2.5));
+  const below = Math.max(rowDark(m.x1, m.x2, m.y2 + 1.5), rowDark(m.x1, m.x2, m.y2 + 2.5));
+  if (above < 0.2 && below < 0.2) {
+    const dup = clean.find((c) => Math.abs(c.y - m.y) < 2 && c.x1 < m.x2 && m.x1 < c.x2);
+    if (dup) { dup.x1 = Math.min(dup.x1, m.x1); dup.x2 = Math.max(dup.x2, m.x2); }
+    else clean.push({ ...m });
+  }
+}
+const out = clean
+  .sort((a, b) => a.y - b.y)
+  .map((m) => {
+    const y = (m.y + m.y2) / 2;
+    const used = items.find((it) => Math.abs(it.y + 1.5 - y) < 3 && it.x < m.x2 && it.x + it.w > m.x1);
+    return `y=${y.toFixed(1)}\tx=${m.x1.toFixed(0)}-${m.x2.toFixed(0)}\t${used ? "USED " + (typeof used.v === "string" ? used.v : "fn") : "FREE"}`;
+  });
+document.getElementById("out").textContent = out.join("\n");
+window.result = out.join("\n");
+window.ready = true;
+</script>
+</body></html>

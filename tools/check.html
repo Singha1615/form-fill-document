@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>check</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>body{margin:0} canvas{display:block}</style>
+</head><body>
+<script type="module">
+// Dev tool: fills a document with test values and renders one page.
+// ?doc=bt46&p=1&nat=kh&s=1.6
+import { DOCS } from "../js/docs.js";
+import { buildPdf } from "../js/pdfgen.js";
+const q = new URLSearchParams(location.search);
+const doc = DOCS[q.get("doc")];
+const d = {};
+for (const sec of doc.sections) for (const f of sec.fields) {
+  if (f.type === "radio") d[f.id] = f.def ?? f.opts[0][0];
+  else if (f.type === "checkbox") d[f.id] = true;
+  else if (f.type === "date") d[f.id] = "2026-11-23";
+  else if (f.type === "image") d[f.id] = "";
+  else d[f.id] = f.def && typeof f.def !== "function" ? f.def : (f.list ? f.list[0] : "ทดสอบ " + f.label.slice(0, 14));
+}
+for (const [k, v] of q) if (!["doc", "p", "s", "x0", "y0"].includes(k)) d[k] = v;
+// a test signature
+const c = document.createElement("canvas"); c.width = 300; c.height = 90;
+const g = c.getContext("2d"); g.strokeStyle = "#1638a8"; g.lineWidth = 5; g.beginPath(); g.moveTo(10, 70); g.bezierCurveTo(80, -20, 120, 120, 180, 30); g.bezierCurveTo(220, 0, 260, 80, 290, 40); g.stroke();
+for (const sec of doc.sections) for (const f of sec.fields) if (f.type === "image" && /^sig/.test(f.id)) d[f.id] = c.toDataURL();
+const bytes = await buildPdf(doc, d, {});
+const base = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/";
+const pdfjs = await import(base + "pdf.min.mjs");
+pdfjs.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.mjs";
+const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+const page = await pdf.getPage(+(q.get("p") || 1));
+const vp = page.getViewport({ scale: +(q.get("s") || 1.6) });
+const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+document.body.appendChild(cv);
+const sc = +(q.get("s") || 1.6);
+window.scrollTo(+(q.get("x0") || 0) * sc, +(q.get("y0") || 0) * sc);
+window.ready = true;
+</script>
+</body></html>

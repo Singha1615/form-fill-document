@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>calib</title></head><body>
+<pre id="out"></pre>
+<script type="module">
+// Dev tool: for every text placement, finds the dotted/underlined line nearest to
+// its baseline on the blank PDF and reports how far off the baseline is.
+// ?doc=bt46  (&nat=kh for the contract). window.fixes has suggested contract values.
+import { DOCS } from "../js/docs.js";
+const q = new URLSearchParams(location.search);
+const doc = DOCS[q.get("doc")];
+const nat = q.get("nat") || "mm";
+const d = { nat };
+for (const sec of doc.sections) for (const f of sec.fields) if (f.type === "radio" && !(f.id in d)) d[f.id] = f.def;
+const file = typeof doc.file === "function" ? doc.file(d) : doc.file;
+const base = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/";
+const pdfjs = await import(base + "pdf.min.mjs");
+pdfjs.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.mjs";
+const pdf = await pdfjs.getDocument("../" + encodeURI(file)).promise;
+const S = 4;
+const pages = {};
+async function pageData(p) {
+  if (pages[p]) return pages[p];
+  const page = await pdf.getPage(p);
+  const vp = page.getViewport({ scale: S });
+  const c = document.createElement("canvas");
+  c.width = vp.width; c.height = vp.height;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return (pages[p] = { w: c.width, h: c.height, px: ctx.getImageData(0, 0, c.width, c.height).data });
+}
+function darkness(pd, x1, x2, y) {
+  const row = Math.round(y * S);
+  let dark = 0, n = 0;
+  for (let x = Math.round(x1 * S); x < Math.round(x2 * S); x++) {
+    const i = (row * pd.w + x) * 4;
+    const v = (pd.px[i] + pd.px[i + 1] + pd.px[i + 2]) / 3;
+    if (v < 150) dark++;
+    n++;
+  }
+  return n ? dark / n : 0;
+}
+// nearest line (cluster of dark rows) to target y
+function findLine(pd, x1, x2, y) {
+  const rows = [];
+  for (let yy = y - 12; yy <= y + 10; yy += 0.25) rows.push([yy, (darkness(pd, x1, x2, yy) + darkness(pd, x1, x2, yy + 0.25)) / 2]);
+  const clusters = [];
+  let cur = null;
+  for (const [yy, v] of rows) {
+    if (v >= 0.3) {
+      if (!cur) clusters.push((cur = { best: yy, v, from: yy }));
+      else if (v > cur.v) { cur.best = yy; cur.v = v; }
+    } else cur = null;
+  }
+  if (!clusters.length) return null;
+  clusters.sort((a, b) => Math.abs(a.best - (y + 1.5)) - Math.abs(b.best - (y + 1.5)));
+  return clusters[0];
+}
+// is there ink (label text) in the band just above the line at column x?
+function inkAt(pd, x, line) {
+  const col = Math.round(x * S);
+  for (let y = line - 10; y <= line - 2.5; y += 0.25) {
+    const i = (Math.round(y * S) * pd.w + col) * 4;
+    if ((pd.px[i] + pd.px[i + 1] + pd.px[i + 2]) / 3 < 140) return true;
+  }
+  return false;
+}
+// first x >= start where the next 12pt above the line are blank
+function blankStart(pd, start, line) {
+  for (let x = start; x < start + 80; x += 0.5) {
+    let ok = true;
+    for (let k = 0; k < 12; k += 0.5) if (inkAt(pd, x + k, line)) { ok = false; break; }
+    if (ok) return x;
+  }
+  return null;
+}
+const lines = [];
+const found = [];
+const items = doc.placements(d);
+for (const [idx, it] of items.entries()) {
+  let segs = [];
+  if (it.t === "flow") segs = it.lines.map(([x, y, w]) => ({ x, y, w }));
+  else if (it.t === "text") segs = [{ x: it.x, y: it.y, w: it.w || 40 }];
+  else if (it.t === "img") segs = [{ x: it.x, y: it.y + it.h + 2, w: it.w, img: true }];
+  for (const s of segs) {
+    const pd = await pageData(it.p);
+    const x1 = s.x + 4, x2 = s.x + Math.max(s.w - 4, 8);
+    const c = findLine(pd, x1, x2, s.y);
+    const key = typeof it.v === "string" ? it.v : it.v.toString().slice(0, 34).replace(/\s+/g, " ");
+    // label overlap: if there is ink right where the text starts, find where blank space begins
+    let xs = null;
+    if (c && !s.img && it.align !== "center") {
+      const lineY = c.best;
+      let hit = false;
+      for (let x = s.x; x < s.x + 8; x += 0.5) if (inkAt(pd, x, lineY)) hit = true;
+      if (hit) xs = blankStart(pd, s.x, lineY);
+    }
+    found.push({ idx, p: it.p, y: s.y, line: c ? c.best : null, img: !!s.img, x: s.x, xs });
+    lines.push(`${idx}\tp${it.p}\t${s.img ? "IMG " : ""}y=${s.y.toFixed(1)}\tline=${c ? c.best.toFixed(2) : "-"}\tdark=${c ? c.v.toFixed(2) : "-"}\tdelta=${c ? (c.best - s.y).toFixed(2) : ""}\t${xs != null ? "X " + s.x.toFixed(1) + "->" + xs.toFixed(1) : ""}\t${key}`);
+  }
+}
+window.found = found;
+document.getElementById("out").textContent = lines.join("\n");
+window.result = lines.join("\n");
+window.ready = true;
+</script>
+</body></html>

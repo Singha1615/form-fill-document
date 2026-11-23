@@ -1,0 +1,42 @@
+﻿<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>inspect</title>
+<style>body{margin:0;font:12px sans-serif} .pg{position:relative;margin:10px;display:inline-block;border:1px solid #999} canvas{display:block}</style>
+</head><body>
+<div id="out"></div>
+<script type="module">
+// Dev tool: ?f=<pdf>&p=<page>&s=<scale>&grid=1  renders a page with a point grid (PDF coords, origin bottom-left)
+const base = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/";
+const pdfjs = await import(base + "pdf.min.mjs");
+pdfjs.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.mjs";
+const q = new URLSearchParams(location.search);
+const f = q.get("f"), pn = +(q.get("p") || 1), scale = +(q.get("s") || 1.5);
+const pdf = await pdfjs.getDocument("../" + encodeURI(f)).promise;
+const page = await pdf.getPage(pn);
+const vp = page.getViewport({ scale });
+const c = document.createElement("canvas");
+c.width = vp.width; c.height = vp.height;
+const ctx = c.getContext("2d");
+await page.render({ canvasContext: ctx, viewport: vp }).promise;
+const [, , W, H] = page.view;
+if (q.get("grid")) {
+  const step = +(q.get("step") || 20);
+  ctx.font = "9px sans-serif";
+  for (let x = 0; x <= W; x += step) {
+    ctx.strokeStyle = x % 50 === 0 ? "rgba(255,0,0,.45)" : "rgba(0,120,255,.18)";
+    ctx.beginPath(); ctx.moveTo(x * scale, 0); ctx.lineTo(x * scale, H * scale); ctx.stroke();
+    if (x % 50 === 0) { ctx.fillStyle = "red"; ctx.fillText(x, x * scale + 2, 10); }
+  }
+  for (let y = 0; y <= H; y += step) {
+    const py = (H - y) * scale;
+    ctx.strokeStyle = y % 50 === 0 ? "rgba(255,0,0,.45)" : "rgba(0,120,255,.18)";
+    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W * scale, py); ctx.stroke();
+    if (y % 50 === 0) { ctx.fillStyle = "red"; ctx.fillText(y, 2, py - 2); }
+  }
+}
+document.getElementById("out").appendChild(c);
+window.pageInfo = { pages: pdf.numPages, view: page.view, rotate: page.rotate };
+const tc = await page.getTextContent();
+window.textItems = tc.items.filter(i => i.str.trim()).map(i => ({ s: i.str, x: +i.transform[4].toFixed(1), y: +i.transform[5].toFixed(1), w: +i.width.toFixed(1), h: +i.height.toFixed(1) }));
+window.ready = true;
+</script>
+</body></html>

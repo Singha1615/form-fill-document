@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>กรอกฟอร์ม</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="index.html" class="brand"><span class="brand-mark">✎</span><span>กรอกฟอร์มเอกสาร</span></a>
+      <ul class="nav-links" id="nav-links"></ul>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="form-head">
+      <div>
+        <a href="index.html" class="back">← กลับหน้ารวมเอกสาร</a>
+        <h1><span class="code" id="doc-code"></span><span id="doc-title"></span></h1>
+        <p class="muted" id="doc-desc"></p>
+      </div>
+      <a class="btn" id="btn-blank" target="_blank" rel="noopener">ดูแบบฟอร์มเปล่า</a>
+    </div>
+
+    <form id="form" autocomplete="off" onsubmit="return false"></form>
+
+    <details class="section" id="settings">
+      <summary>ปรับตำแหน่งและรูปแบบตัวอักษร <span class="tag">ไม่บังคับ</span></summary>
+      <p class="hint" style="margin-bottom:12px">ถ้าข้อความใน PDF ไม่ตรงเส้นพอดี ขยับทั้งหน้าได้ที่นี่ (หน่วยเป็นจุด, 1 จุด ≈ 0.35 มม.)</p>
+      <div class="grid">
+        <div class="field third"><label class="lbl" for="s-offX">เลื่อนซ้าย/ขวา</label><input type="number" id="s-offX" step="0.5" value="0" /><span class="hint">ค่าบวก = ไปทางขวา</span></div>
+        <div class="field third"><label class="lbl" for="s-offY">เลื่อนขึ้น/ลง</label><input type="number" id="s-offY" step="0.5" value="0" /><span class="hint">ค่าบวก = ลงล่าง</span></div>
+        <div class="field third"><label class="lbl" for="s-font">ขนาดตัวอักษร (%)</label><input type="number" id="s-font" step="5" min="50" max="200" value="100" /></div>
+        <div class="field third"><label class="lbl" for="s-ink">สีตัวอักษร</label>
+          <select id="s-ink"><option value="black">ดำ</option><option value="blue">น้ำเงิน</option></select></div>
+        <div class="field third" style="justify-content:flex-end"><button type="button" class="chip-btn" id="s-reset">คืนค่าเดิม</button></div>
+      </div>
+    </details>
+  </main>
+
+  <div class="actions">
+    <div class="actions-inner">
+      <span class="msg" id="msg">ข้อมูลบันทึกอัตโนมัติในเบราว์เซอร์นี้</span>
+      <button type="button" class="btn btn-ghost" id="btn-clear">ล้างข้อมูล</button>
+      <button type="button" class="btn" id="btn-preview">แสดง PDF</button>
+      <button type="button" class="btn btn-primary" id="btn-download">ดาวน์โหลด PDF</button>
+    </div>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title">ตัวอย่าง PDF</h2>
+        <div class="row">
+          <a id="modal-download" class="btn btn-primary">ดาวน์โหลด</a>
+          <button class="btn" data-close aria-label="ปิด">✕</button>
+        </div>
+      </div>
+      <iframe id="viewer" title="ตัวอย่าง PDF"></iframe>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="js/form.js"></script>
+</body>
+</html>

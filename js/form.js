@@ -1,6 +1,7 @@
 import { DOCS, DOC_ORDER } from "./docs.js";
 import { debounce } from "./common.js";
 import { buildPdf } from "./pdfgen.js";
+import { translateThToEn } from "./translate.js";
 
 const docId = new URLSearchParams(location.search).get("doc");
 const doc = DOCS[docId];
@@ -85,6 +86,15 @@ function fieldEl(f) {
       set(f.id, data[f.copy.from] || "");
       syncInput(f.id);
     });
+    row.appendChild(b);
+  }
+  if (f.tr) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "link-btn";
+    b.textContent = "แปลจากภาษาไทย";
+    b.title = "แปลข้อความจากช่องภาษาไทยที่คู่กันด้วย Google Translate";
+    b.addEventListener("click", () => runTranslate([f], true, b));
     row.appendChild(b);
   }
   box.appendChild(row);
@@ -234,6 +244,58 @@ function refresh() {
   $("#btn-blank").href = encodeURI(file);
 }
 refresh();
+
+// ---------- Thai -> English translation ----------
+const trFields = allFields.filter((f) => f.tr);
+const srcText = (f) => [].concat(f.tr).map((k) => String(data[k] || "").trim()).filter(Boolean).join(" ");
+const isEmpty = (id) => !String(data[id] ?? "").trim();
+
+async function runTranslate(fields, overwrite, btn) {
+  const jobs = fields.filter((f) => srcText(f) && (overwrite || isEmpty(f.id)));
+  if (!jobs.length) {
+    toast(fields.length === 1 ? "กรอกช่องภาษาไทยที่คู่กันก่อน แล้วกดแปลอีกครั้ง" : "ไม่มีช่องที่ต้องแปล");
+    return 0;
+  }
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "กำลังแปล…";
+  try {
+    const out = await translateThToEn(jobs.map(srcText));
+    jobs.forEach((f, i) => {
+      data[f.id] = out[i];
+      syncInput(f.id);
+      fieldBoxes.get(f.id)?.classList.remove("missing");
+    });
+    save();
+    toast(`แปลแล้ว ${jobs.length} ช่อง — ตรวจทานคำแปลก่อนใช้งาน`);
+  } catch (e) {
+    console.error(e);
+    toast("แปลไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
+  }
+  return jobs.length;
+}
+
+if (trFields.length) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn btn-primary";
+  b.textContent = "แปลไทย → อังกฤษ ทั้งหมด";
+  b.addEventListener("click", async () => {
+    const pending = trFields.filter((f) => srcText(f) && isEmpty(f.id));
+    if (pending.length) return runTranslate(pending, false, b);
+    const filled = trFields.filter((f) => srcText(f));
+    if (!filled.length) return toast("กรอกช่องภาษาไทยก่อน แล้วกดแปล");
+    if (confirm("ช่องภาษาอังกฤษกรอกไว้แล้วทั้งหมด ต้องการแปลใหม่และเขียนทับหรือไม่?")) runTranslate(filled, true, b);
+  });
+  $(".head-actions").prepend(b);
+  $("#doc-desc").insertAdjacentHTML(
+    "afterend",
+    `<p class="hint" style="margin-top:6px">ปุ่ม "แปล" จะเติมช่องภาษาอังกฤษจากช่องภาษาไทยให้อัตโนมัติ (ส่งเฉพาะข้อความที่แปลไปที่ Google Translate) แปลเสร็จแล้วแก้ไขได้ตามต้องการ</p>`
+  );
+}
 
 // ---------- settings ----------
 const defSettings = { offX: 0, offY: 0, font: 100, ink: "black" };
